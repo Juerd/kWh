@@ -1,0 +1,26 @@
+#!/bin/bash
+
+cd /home/juerd
+
+ARGS=(
+	-w 1000 -h 600 -l 0 \
+        -t "PowerUsage @ Juerd" \
+        -v "Watt" \
+        --units-exponent 0 \
+        DEF:Watt=kWh.rrd:kWh:AVERAGE \
+	"CDEF:Low=Watt,0,750,LIMIT" \
+        "CDEF:Mid=Watt,750,1500,LIMIT" \
+        "CDEF:High=Watt,1500,3000,LIMIT" \
+        "CDEF:VHigh=Watt,3000,15000,LIMIT" \
+        -c BACK#000000 -c CANVAS#202020 -c MGRID#00ff00 -c GRID#008000 -c FONT#00ff00 \
+        -c AXIS#00ff00 -c ARROW#00ff00 -c SHADEA#000000 -c SHADEB#000000
+	AREA:Low#00ff00:"0 - 750" AREA:Mid#ffbf00:"750 - 1500" AREA:High#FF0000:"1500 - 3000" AREA:VHigh#ffffff:"> 3kW"
+)
+
+#rrdtool graph power.png  "${ARGS[@]}" -s 11:53 -e now
+#exit
+rrdtool graph power-6h.png  "${ARGS[@]}" -s end-6h  -e now "GPRINT:Watt:LAST:Currently using\: %5.0lf %SW\n"
+rrdtool graph power-1d.png  "${ARGS[@]}" -s end-1d  -e now "GPRINT:Watt:AVERAGE:Average usage\: %5.0lf %SW\n"  
+rrdtool graph power-7d.png  "${ARGS[@]}" -s end-7d  -e now "GPRINT:Watt:AVERAGE:Average usage\: %5.0lf %SW\n"  
+rrdtool graph power-30d.png "${ARGS[@]}" -s end-30d -e now "GPRINT:Watt:AVERAGE:Average usage\: %5.0lf %SW\n"  
+
