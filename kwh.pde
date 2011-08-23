@@ -1,4 +1,12 @@
+#define READINGS       250
+#define THRESHOLD        1.08
 
+#define VOLTAGE        235
+#define MAX_AMPS        25
+#define CYCLES_PER_KWH 375
+
+#define MS_PER_HOUR    3.6e6
+#define DEBOUNCE_TIME  1000 * MS_PER_HOUR / (CYCLES_PER_KWH * VOLTAGE * MAX_AMPS)
 
 void setup () {
   Serial.begin(9600);
@@ -11,8 +19,7 @@ void setup () {
 int ledstate = LOW;
 unsigned long cycle = 0;
 unsigned long previous = 0; // timestamp
-#define READINGS  250
-#define THRESHOLD   1.08
+
 unsigned short readings[READINGS];
 unsigned short cursor = 0;
 boolean gotenough = false;
@@ -83,7 +90,7 @@ void loop () {
   unsigned long now = millis();
   unsigned long time = now - previous;
 
-  if (time < 1000) return;  // debounce, just in case
+  if (time < DEBOUNCE_TIME) return;
 
   previous = now;  
  
@@ -92,7 +99,7 @@ void loop () {
     return;
   }
   
-  double W = (1000.0 * 3600000.0 / (double) time) / 375;
+  double W = 1000 * ((double) MS_PER_HOUR / time) / CYCLES_PER_KWH;
   Serial.print("Cycle ");
   Serial.print(cycle, DEC);
   Serial.print(": ");
