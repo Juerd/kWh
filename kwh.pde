@@ -6,7 +6,7 @@
 #define CYCLES_PER_KWH 375
 
 #define MS_PER_HOUR    3.6e6
-#define DEBOUNCE_TIME  1000 * MS_PER_HOUR / (CYCLES_PER_KWH * VOLTAGE * MAX_AMPS)
+#define DEBOUNCE_TIME  (1000 * ((double) MS_PER_HOUR / ((long) CYCLES_PER_KWH * VOLTAGE * MAX_AMPS)))
 
 void setup () {
   Serial.begin(9600);
@@ -14,6 +14,7 @@ void setup () {
   pinMode(13, OUTPUT);
   pinMode(2, INPUT);
   digitalWrite(2, HIGH);
+  Serial.println(DEBOUNCE_TIME);
 }
 
 int ledstate = LOW;
@@ -40,7 +41,7 @@ void loop () {
   for (unsigned short i = 0; i < READINGS; i++) bigsum += readings[i];
   unsigned short average = bigsum / READINGS;
   
-  double ratio = (double) sum/average;  
+  double ratio = (double) sum / (average+1);
   boolean newledstate = ratio > THRESHOLD;
    
   if ((!gotenough) || (!newledstate)) {
@@ -53,6 +54,8 @@ void loop () {
     
   if (debug && (newledstate || !(cursor % 20))) {
     Serial.print(ratio, 2);
+    Serial.print(" ");
+    Serial.print(average);
     Serial.print(" ");
     Serial.println(sum);
   }
@@ -74,10 +77,8 @@ void loop () {
   digitalWrite(13, ledstate = newledstate);
 
   if (!ledstate) {
-    if (1 || debug) {
-      Serial.print("Marker for cycle ");
-      Serial.print(cycle, DEC);
-      Serial.print(": ");
+    if (debug) {
+      Serial.print("Marker: ");
       Serial.print(millis() - previous);
       Serial.print(" ms (");
       Serial.print(hits, DEC);
@@ -107,7 +108,5 @@ void loop () {
   Serial.print(" ms, ");
   Serial.print(W, 2);
   Serial.println(" W");
-  
-  
 }
 
