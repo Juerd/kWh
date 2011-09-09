@@ -1,26 +1,80 @@
 #include "TM1638.h"
+#include "EEPROM.h"
+#include "AnythingEEPROM.h"
+#include <inttypes.h>
 
 #define READINGS       250
-#define LOWER_THRESHOLD  1.01
-#define UPPER_THRESHOLD  1.05
-
-#define VOLTAGE        235
-#define MAX_AMPS        25
-#define CYCLES_PER_KWH 375
-
+#define EEPROM_OFFSET  100
 #define MS_PER_HOUR    3.6e6
-#define DEBOUNCE_TIME  (1000 * ((double) MS_PER_HOUR / ((long) CYCLES_PER_KWH * VOLTAGE * MAX_AMPS)))
+
+#define KEY_CYCLES     1 << 0
+#define KEY_LOWER      1 << 1
+#define KEY_UPPER      1 << 2
+#define KEY_MAXWATT    1 << 3
+#define KEY_RAW        1 << 4
+#define KEY_DECR       1 << 6
+#define KEY_INCR       1 << 7
+
+struct SettingsStruct {
+  unsigned short cycles_per_kwh;
+  unsigned char  lower_threshold;
+  unsigned char  upper_threshold;
+  unsigned short max_watt;
+} settings;
+
+unsigned long debounce_time;
+
+void read_settings() {
+  EEPROM_readAnything(EEPROM_OFFSET, settings);
+  if (settings.lower_threshold == 0xff) settings.lower_threshold = 101;
+  if (settings.upper_threshold == 0xff) settings.upper_threshold = 105;
+  if (settings.cycles_per_kwh == 0xffff) settings.cycles_per_kwh = 375;
+  if (settings.max_watt == 0xffff) settings.max_watt = 6000;
+  debounce_time = (1000 * ((double) MS_PER_HOUR / ((long) settings.cycles_per_kwh * settings.max_watt)));
+  Serial.println("Settings: ");
+  Serial.println(settings.cycles_per_kwh, DEC);
+  Serial.println(settings.lower_threshold, DEC);
+  Serial.println(settings.upper_threshold, DEC);
+  Serial.println(settings.max_watt, DEC);
+  Serial.println(debounce_time);
+}
+
+void save_settings() {
+  EEPROM_writeAnything(EEPROM_OFFSET, settings);
+}
 
 TM1638 display(/*dio*/ 4, /*clk*/ 5, /*stb0*/ 3);
 
+char idletext[9] = "--------";
+
+void display_text (char* text, boolean keep = true) {
+  display.setDisplayToString(text);
+  if (keep) strcpy(idletext, text);
+}
+
+void display_numtext (unsigned short num, char* text, boolean keep = true) {
+  char numstr[9] = "";
+  itoa(num, numstr, 10);
+  char str[9] = "        ";
+  byte width = strlen(text) < 4 && settings.max_watt > 9999 ? 5 : 4;
+  strcpy(&str[width - strlen(numstr)], numstr);
+  strcpy(&str[width], "    ");
+  strcpy(&str[8 - strlen(text)], text);
+  display_text(str, keep);
+}
+
+void restore_display () {
+  display_text(idletext, false);
+}
+
 void setup () {
+  display_text("____    ");
   Serial.begin(57600);
   pinMode(A1, INPUT);
   pinMode(13, OUTPUT);
   pinMode(2, INPUT);
   digitalWrite(2, HIGH);
-  Serial.println(DEBOUNCE_TIME);
-  display.setDisplayToString("----    ");
+  read_settings();
 }
 
 int ledstate = LOW;
@@ -33,24 +87,67 @@ boolean gotenough = false;
 
 int hits = 0;
 
+unsigned long restore_time = 0;
+boolean settingschanged = false;
+unsigned long key_debounce = 0;
+  
 void loop () {
   delay(10);
   
   boolean debug = (digitalRead(2) == LOW);
   
+  byte keys = display.getButtons();
+
   unsigned short sum = 0;
   for (byte i = 0; i < 40; i++) {
     sum += analogRead(1);
   }
 
+  if (keys) {
+    restore_time = millis() + 2000;
+    if (!key_debounce) {
+      if (keys == (KEY_CYCLES  | KEY_DECR)) --settings.cycles_per_kwh;
+      if (keys == (KEY_CYCLES  | KEY_INCR)) ++settings.cycles_per_kwh;
+      if (keys == (KEY_LOWER   | KEY_DECR)) --settings.lower_threshold;
+      if (keys == (KEY_LOWER   | KEY_INCR)) ++settings.lower_threshold;
+      if (keys == (KEY_UPPER   | KEY_DECR)) --settings.upper_threshold;
+      if (keys == (KEY_UPPER   | KEY_INCR)) ++settings.upper_threshold;
+      if (keys == (KEY_MAXWATT | KEY_DECR)) settings.max_watt -= 100;
+      if (keys == (KEY_MAXWATT | KEY_INCR)) settings.max_watt += 100;
+      if (keys & KEY_INCR || keys & KEY_DECR) {
+        key_debounce = millis() + 200;
+        settingschanged = true;
+      }
+    } else if (millis() >= key_debounce ) {
+      key_debounce = 0;
+    }
+    if (keys & KEY_CYCLES)  display_numtext(settings.cycles_per_kwh, "CYCL", false);
+    if (keys & KEY_LOWER)   display_numtext(settings.lower_threshold, " LO ", false);
+    if (keys & KEY_UPPER)   display_numtext(settings.upper_threshold, " HI ", false);
+    if (keys & KEY_MAXWATT) display_numtext(settings.max_watt, "TOP", false);
+    if (keys & KEY_RAW)   { display.setDisplayToDecNumber(sum, 0); delay(100); }
+  }
+  if (restore_time && millis() >= restore_time) {
+    restore_time = 0;
+    if (settingschanged) {
+      Serial.println("Saving settings");
+      save_settings();
+      settingschanged = false;
+    }
+    restore_display();
+  }
+
+
   unsigned long bigsum = 0;
   for (unsigned short i = 0; i < READINGS; i++) bigsum += readings[i];
   unsigned short average = bigsum / READINGS;
   
-  double ratio = (double) sum / (average+1);
-  boolean newledstate = ledstate ? (ratio > LOWER_THRESHOLD) : (ratio >= UPPER_THRESHOLD);
+  unsigned int ratio = (double) sum / (average+1) * 100;
+  boolean newledstate = ledstate 
+    ? (ratio >  settings.lower_threshold)
+    : (ratio >= settings.upper_threshold);
 
-  int numleds = ratio * 100 - 100;
+  int numleds = ratio - 100;
   if (numleds < 0) numleds = 0;
   if (numleds > 8) numleds = 8;
   unsigned long ledmask = 0xff >> 8 - numleds;
@@ -61,12 +158,16 @@ void loop () {
     readings[cursor++] = sum;
     if (cursor >= READINGS) {
       cursor = 0;
-      gotenough = true;
+      if (!gotenough) {
+        gotenough = true;
+        Serial.println("Done averaging");
+        display_text("====    ");
+      }
     }
   }
     
   if (debug && ((newledstate && hits < 15) || !(cursor % 20))) {
-    Serial.print(ratio, 2);
+    Serial.print(ratio, DEC);
     Serial.print(" ");
     Serial.print(average);
     Serial.print(" ");
@@ -106,17 +207,17 @@ void loop () {
   unsigned long now = millis();
   unsigned long time = now - previous;
 
-  if (time < DEBOUNCE_TIME) return;
+  if (time < debounce_time) return;
 
   previous = now;  
  
   if (!cycle++) {
     Serial.println("Discarding incomplete cycle.");
-    display.setDisplayToString("====    ");
+    display_text("****    ");
     return;
   }
   
-  double W = 1000 * ((double) MS_PER_HOUR / time) / CYCLES_PER_KWH;
+  double W = 1000 * ((double) MS_PER_HOUR / time) / settings.cycles_per_kwh;
   Serial.print("Cycle ");
   Serial.print(cycle, DEC);
   Serial.print(": ");
@@ -125,11 +226,6 @@ void loop () {
   Serial.print(W, 2);
   Serial.println(" W");
   
-  char numstr[9] = "";
-  itoa(W, numstr, 10);
-  char str[9] = "        ";
-  int len = strlen(numstr);
-  for (int i = 0; i < len; i++) str[(4 - len) + i] = numstr[i];
-  display.setDisplayToString(str);
+  display_numtext(W, "");
 }
 
