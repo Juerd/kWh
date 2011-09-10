@@ -1,0 +1,8 @@
+#!/bin/sh
+stty -F /dev/ttyUSB0 57600
+
+cd /home/juerd
+while true; do
+ cat /dev/ttyUSB0 | awk '{ print $0 > "/dev/stderr"; if (/^Cycle/) { print "update kWh.rrd N:" $5 } }' | rrdtool -
+ sleep 1
+done
