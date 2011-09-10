@@ -24,23 +24,29 @@ struct SettingsStruct {
 
 unsigned long debounce_time;
 
+void calc_debounce() {
+  debounce_time = (1000 * ((double) MS_PER_HOUR / ((long) settings.cycles_per_kwh * settings.max_watt)));
+  Serial.print("Debounce time (ms): ");
+  Serial.println(debounce_time);
+}
+
 void read_settings() {
   EEPROM_readAnything(EEPROM_OFFSET, settings);
   if (settings.lower_threshold == 0xff) settings.lower_threshold = 101;
   if (settings.upper_threshold == 0xff) settings.upper_threshold = 105;
   if (settings.cycles_per_kwh == 0xffff) settings.cycles_per_kwh = 375;
   if (settings.max_watt == 0xffff) settings.max_watt = 6000;
-  debounce_time = (1000 * ((double) MS_PER_HOUR / ((long) settings.cycles_per_kwh * settings.max_watt)));
   Serial.println("Settings: ");
   Serial.println(settings.cycles_per_kwh, DEC);
   Serial.println(settings.lower_threshold, DEC);
   Serial.println(settings.upper_threshold, DEC);
   Serial.println(settings.max_watt, DEC);
-  Serial.println(debounce_time);
+  calc_debounce();
 }
 
 void save_settings() {
   EEPROM_writeAnything(EEPROM_OFFSET, settings);
+  calc_debounce();
 }
 
 TM1638 display(/*dio*/ 4, /*clk*/ 5, /*stb0*/ 3);
@@ -93,8 +99,6 @@ unsigned long key_debounce = 0;
   
 void loop () {
   delay(10);
-  
-  boolean debug = (digitalRead(2) == LOW);
   
   byte keys = display.getButtons();
 
@@ -165,41 +169,20 @@ void loop () {
       }
     }
   }
-    
-  if (debug && ((newledstate && hits < 15) || !(cursor % 20))) {
-    Serial.print(ratio, DEC);
-    Serial.print(" ");
-    Serial.print(average);
-    Serial.print(" ");
-    Serial.println(sum);
-  }
 
-  if (!gotenough) {
-    if (!(cursor % 10)) {
-      Serial.print("Averaging... ");
-      Serial.print(cursor, DEC);
-      Serial.print("/");
-      Serial.println(READINGS);
-    }
-    return;
-  }
   
   if (newledstate) hits++;
  
   if (newledstate == ledstate) return;
   
-  if (debug) Serial.println(newledstate ? "BEGIN" : "END");
-  
   digitalWrite(13, ledstate = newledstate);
 
   if (!ledstate) {
-    if (debug) {
-      Serial.print("Marker: ");
-      Serial.print(millis() - previous);
-      Serial.print(" ms (");
-      Serial.print(hits, DEC);
-      Serial.println(" readings)");
-    }
+    Serial.print("Marker: ");
+    Serial.print(millis() - previous);
+    Serial.print(" ms (");
+    Serial.print(hits, DEC);
+    Serial.println(" readings)");
     hits = 0;
     return;
   }
