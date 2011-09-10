@@ -12,6 +12,7 @@
 #define KEY_UPPER      1 << 2
 #define KEY_MAXWATT    1 << 3
 #define KEY_RAW        1 << 4
+#define KEY_RATIO      1 << 5
 #define KEY_DECR       1 << 6
 #define KEY_INCR       1 << 7
 
@@ -107,6 +108,12 @@ void loop () {
     sum += analogRead(1);
   }
 
+  unsigned long bigsum = 0;
+  for (unsigned short i = 0; i < READINGS; i++) bigsum += readings[i];
+  unsigned short average = bigsum / READINGS;
+  
+  unsigned int ratio = (double) sum / (average+1) * 100;
+  
   if (keys) {
     restore_time = millis() + 2000;
     if (!key_debounce) {
@@ -130,6 +137,7 @@ void loop () {
     if (keys & KEY_UPPER)   display_numtext(settings.upper_threshold, " HI ", false);
     if (keys & KEY_MAXWATT) display_numtext(settings.max_watt, "TOP", false);
     if (keys & KEY_RAW)   { display.setDisplayToDecNumber(sum, 0); delay(100); }
+    if (keys & KEY_RATIO) { display.setDisplayToDecNumber(ratio, 0); delay(50); }
   }
   if (restore_time && millis() >= restore_time) {
     restore_time = 0;
@@ -142,16 +150,11 @@ void loop () {
   }
 
 
-  unsigned long bigsum = 0;
-  for (unsigned short i = 0; i < READINGS; i++) bigsum += readings[i];
-  unsigned short average = bigsum / READINGS;
-  
-  unsigned int ratio = (double) sum / (average+1) * 100;
   boolean newledstate = ledstate 
     ? (ratio >  settings.lower_threshold)
     : (ratio >= settings.upper_threshold);
 
-  int numleds = ratio - 100;
+  int numleds = ratio - settings.lower_threshold;
   if (numleds < 0) numleds = 0;
   if (numleds > 8) numleds = 8;
   unsigned long ledmask = 0xff >> 8 - numleds;
