@@ -84,7 +84,7 @@ void setup () {
   read_settings();
 }
 
-int ledstate = LOW;
+boolean ledstate = LOW;
 unsigned long cycle = 0;
 unsigned long previous = 0; // timestamp
 
@@ -92,14 +92,14 @@ unsigned short readings[READINGS];
 unsigned short cursor = 0;
 boolean gotenough = false;
 
-int hits = 0;
+unsigned short hits = 0;
 
 unsigned long restore_time = 0;
 boolean settingschanged = false;
 unsigned long key_debounce = 0;
   
 void loop () {
-  delay(10);
+//  delay(10);
   
   byte keys = display.getButtons();
 
@@ -112,7 +112,7 @@ void loop () {
   for (unsigned short i = 0; i < READINGS; i++) bigsum += readings[i];
   unsigned short average = bigsum / READINGS;
   
-  unsigned int ratio = (double) sum / (average+1) * 100;
+  unsigned short ratio = (double) sum / (average+1) * 100;
   
   if (keys) {
     restore_time = millis() + 2000;

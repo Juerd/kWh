@@ -2,25 +2,62 @@
 
 cd /home/juerd
 
-ARGS=(
-	-w 1000 -h 600 -l 0 \
-        -t "PowerUsage @ Juerd" \
-        -v "Watt" \
-        --units-exponent 0 \
-        DEF:Watt=kWh.rrd:kWh:AVERAGE \
-	"CDEF:Low=Watt,0,750,LIMIT" \
-        "CDEF:Mid=Watt,750,1500,LIMIT" \
-        "CDEF:High=Watt,1500,3000,LIMIT" \
-        "CDEF:VHigh=Watt,3000,15000,LIMIT" \
-        -c BACK#000000 -c CANVAS#202020 -c MGRID#00ff00 -c GRID#008000 -c FONT#00ff00 \
+ARGS2=(
+	-l 0
+        -v "Watt"
+        --units-exponent 0
+        DEF:Watt=kWh.rrd:kWh:AVERAGE
+	"CDEF:weekend=LTIME,604800,%,172800,345600,LIMIT,UN,UNKN,Watt,*,INF,IF"
+	"CDEF:night=LTIME,86400,%,25200,82800,LIMIT,UN,INF,UNKN,Watt,*,IF"
+	"CDEF:offpeak=weekend,ISINF,night,ISINF,+,INF,*"
+	AREA:offpeak#000040:""
+	"CDEF:Low=Watt,0,750,LIMIT"
+        "CDEF:Mid=Watt,750,1500,LIMIT"
+        "CDEF:High=Watt,1500,3000,LIMIT"
+        "CDEF:VHigh=Watt,3000,15000,LIMIT"
+        -c BACK#000000 -c CANVAS#202020 -c MGRID#00ff00 -c GRID#008000 -c FONT#00ff00
         -c AXIS#00ff00 -c ARROW#00ff00 -c SHADEA#000000 -c SHADEB#000000
-	AREA:Low#00ff00:"0 - 750" AREA:Mid#ffbf00:"750 - 1500" AREA:High#FF0000:"1500 - 3000" AREA:VHigh#ffffff:"> 3kW"
+	AREA:Low#00ff00:"0 - 750" 
+	AREA:Mid#ffbf00:"750 - 1500" 
+	AREA:High#FF0000:"1500 - 3000" 
+        AREA:VHigh#ffffff:"> 3kW"
+	"GPRINT:Watt:AVERAGE:Average usage\: %.0lf W"
 )
 
-#rrdtool graph power.png  "${ARGS[@]}" -s 11:53 -e now
+#rrdtool graph power.png  "${ARGS[@]}" -s 18:00 -e 20:10
 #exit
-rrdtool graph power-6h.png  "${ARGS[@]}" -s end-6h  -e now "GPRINT:Watt:LAST:Currently using\: %5.0lf %SW\n"
-rrdtool graph power-1d.png  "${ARGS[@]}" -s end-1d  -e now "GPRINT:Watt:AVERAGE:Average usage\: %5.0lf %SW\n"  
-rrdtool graph power-7d.png  "${ARGS[@]}" -s end-7d  -e now "GPRINT:Watt:AVERAGE:Average usage\: %5.0lf %SW\n"  
-rrdtool graph power-30d.png "${ARGS[@]}" -s end-30d -e now "GPRINT:Watt:AVERAGE:Average usage\: %5.0lf %SW\n"  
 
+if [ "X$1" == "Xdetail" ]; then
+
+nice -n 10 \
+rrdtool graph temp$$.png  -w 900 -h 300 "${ARGS2[@]}" -s end-6h  -e now "GPRINT:Watt:LAST:Current usage\: %.0lf W" \
+	&& mv temp$$.png power-6h.png
+	
+
+fi
+
+if [ "X$1" == "Xhourly" ]; then
+
+ARGS3=(
+	-w 400 -h 200 
+	"CDEF:euro=Watt,offpeak,0.1915,0.2267,IF,*,1000,/,24,*"
+	"GPRINT:euro:AVERAGE:Average cost per day\: %.2lf EUR"
+)
+	
+nice -n 10 \
+rrdtool graph temp$$.png "${ARGS2[@]}" "${ARGS3[@]}" -s end-2d  -e now \
+	&& mv temp$$.png power-2d.png
+
+nice -n 10 \
+rrdtool graph temp$$.png "${ARGS2[@]}" "${ARGS3[@]}" -s end-14d  -e now \
+	&& mv temp$$.png power-14d.png
+
+nice -n 10 \
+rrdtool graph temp$$.png "${ARGS2[@]}" "${ARGS3[@]}" -s end-60d -e now \
+	&& mv temp$$.png power-60d.png
+
+nice -n 10 \
+rrdtool graph temp$$.png "${ARGS2[@]}" "${ARGS3[@]}" -s end-1y -e now \
+	&& mv temp$$.png power-1y.png
+
+fi
