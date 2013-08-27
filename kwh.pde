@@ -149,12 +149,19 @@ void loop () {
     restore_display();
   }
 
+  unsigned short lo = settings.lower_threshold;
+  unsigned short hi = settings.upper_threshold;
+
+  if (hi == 254) {
+      lo = 400;
+      hi = 1000;
+  }
 
   boolean newledstate = ledstate 
-    ? (ratio >  settings.lower_threshold)
-    : (ratio >= settings.upper_threshold);
+    ? (ratio >  lo)
+    : (ratio >= hi);
 
-  int numleds = ratio - settings.lower_threshold;
+  int numleds = ratio - lo;
   if (numleds < 0) numleds = 0;
   if (numleds > 8) numleds = 8;
   unsigned long ledmask = 0xff >> 8 - numleds;
