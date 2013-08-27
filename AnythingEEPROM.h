@@ -1,5 +1,5 @@
 #include <EEPROM.h>
-#include <WProgram.h>
+#include <Arduino.h>
 
 // http://www.arduino.cc/playground/Code/EEPROMWriteAnything
 template <class T> int EEPROM_writeAnything(int ee, const T& value) {
